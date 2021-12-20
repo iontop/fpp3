@@ -1,0 +1,109 @@
+---
+title: "Chap5_1"
+author: "J.H AHN"
+date: '2021 12 7 '
+output:
+  word_document: default
+  html_document: default
+  pdf_document: default
+---
+
+```{r setup, include=FALSE}
+library(fpp3)
+
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## 5.1 A tidy forecasting workflow  
+
+```{r}
+# loading data
+
+head(global_economy)
+
+```
+
+
+### Data preparation (tidy)
+
+```{r}
+gdppc <- 
+    global_economy %>% 
+    mutate(GDP_per_capita = GDP / Population)
+
+gdppc
+
+```
+
+
+### Plot the data (visulaise)
+
+```{r}
+gdppc %>% 
+    filter(Country == "Korea, Rep.") %>% 
+    autoplot(GDP_per_capita) +
+    labs(y = "$US", title = "GDP per capita for Korea")
+
+```
+
+
+### Define a model (specify)
+
+`fable` package를 이용하여 모델을 만들 수 있음.  
+예를 들어 1인당 GDP에 대한 선형 추세 모델은 아래와 같이 만들 수 있음.  
+
+```{r}
+TSLM(GDP_per_capita ~ trend())
+
+```
+
+`fable::TSLM()`은 시계열 데이터를 선형모델(Linear model)로 적합(fit)하기 위한 함수.  
+`TSLM(formula)` 형식으로 사용.  
+반응변수(Response variable)를 GDP_per_capita로 설정하고, `trend()`함수를 사용하여 모델을 만듦.  
+`TSLM()`에서 사용할 수 있는 공통 외인성 회귀변수(Common exogenous regressors)로는 `trend()`, `season()`, `fourier()`가 있음.  
+
+* __trend()__ : special includes common linear trend regressors in the model.  
+* __season()__ : special includes seasonal dummy variables in the model.  
+* __fourier()__ : special includes seasonal fourier terms in the model.   
+
+
+### Train the model (estimate)
+
+```{r ,warning=FALSE}
+fit <- 
+    gdppc %>% 
+    model(trend_model = TSLM(GDP_per_capita ~ trend()))
+
+fit
+
+```
+
+
+### Product forecasts (forecast)
+
+적절한 모델을 생성한 후에는 `forecast()`함수를 이용하여 예측결과를 생성.  
+예측하고자 하는 값에 따라 다음 10개 관측값을 예측하고 싶다면 h = 10, 다음 2년치를 예측하고 싶다면 h = "2 years"로 입력하면 된다.  
+
+다른 상황에서는 예측할 (미래의) 데이터를 제공하면 exogenous regressors를 사용하여 예측할 때 사용된다.  
+
+```{r}
+fit %>% 
+    forecast(h = "3 years")
+
+
+```
+
+계산 결과에서 `GDP_per_capita` 열에는 예측 분포값이 들어 있고 `.mean` 열에는 예측값들의 평균값이 들어있다.  
+
+```{r}
+fit %>% 
+    forecast(h = "3 years") %>% 
+    filter(Country == "Korea, Rep.") %>% 
+    autoplot(gdppc) + 
+    labs(y = "$US", title = "GDP per capita for Korea")
+
+
+```
+
+
+

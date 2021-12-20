@@ -1,0 +1,170 @@
+---
+title: "Chap4"
+author: "J.H AHN"
+date: '2021 12 7 '
+output: html_document
+---
+
+```{r setup, include=FALSE}
+library(fpp3)
+
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## 4.1 Some simple statistics  
+
+
+시계열 데이터에서 여러 숫자형 통계정보 - 예를 들어 평균, 최소, 최대를 계산할 때는 `fable::feature()` 함수를 사용한다.
+```{r}
+# Check data
+head(tourism)
+
+```
+
+평균을 새롭게 구하기 위해서 `feature()`에 `mean()`함수를 사용하여 구하고, 평균을 구한 열의 이름을 'Trips_Mean'으로 변경하기 위하여 `list()`를 사용. 만약 `list()`를 사용하지 않으면 에러 발생  
+
+```{r}
+# mean
+tourism %>% 
+    features(Trips, list(Trips_Mean = mean))
+
+```
+
+
+시간에 대한 계산을 위해서는 최소, 1분위수, 중간값, 3분위수, 최대를 한 번에 구할 수 있는 `stat::quantile()`함수를 사용하면 된다. 
+
+```{r}
+tourism %>% features(Trips, quantile)
+
+```
+
+
+
+## 4.2 ACF features
+
+`feasts::feat_acf()`함수는 자기상관(autocorrelations)에 관련된 아래의 계산을 수행한다.  
+* 첫번째 자기상관계수 (원래 데이터, 지연 데이터); acf1
+* 첫 10개의 자기상관계수의 제곱합 (원래 데이터, 지연 데이터); acf10
+* 계절적인 추세가 있는 데이터에서 첫 번째 계절 지연에 대한 자기 상관계수; season_acf1
+
+```{r}
+tourism %>% features(Trips, feat_acf)
+
+
+```
+
+
+
+## 4.3 STL features
+
+시계열은 $T_t$로 표현되는 전체의 추세, $S_t$로 표현되는 계절적 추세, $R_t$로 표현되는 나머지 추세성분으로 구성되어 있다. $y_t = T_t + S_t + R_t$  
+
+만약 강한 추세를 가지고 있다면, 계절적인 요인을 보정한 데이터는 매우 큰 변화폭을 가질 것이다.  
+그러므로 $Var(R_t) / Var(T_t + R_t)$는 상대적으로 작은 값을 나타낼 것이다.  
+반면 추세가 약하거나 거의 없다면 두 분산은 거의 같기 때문에 1에 가까운 값을 나타낼 것이다.  
+그래서 추세의 강도를 아래와 같이 나타낼 수 있다.  
+
+$$ F_T = \max\left(0, 1 - \frac{\text{Var}(R_t)}{\text{Var}(T_t+R_t)}\right) $$
+
+
+이 식을 통해 추세의 강도를 0 ~ 1 사이의 값으로 나타낼 수 있다.  
+나머지의 분산은 계절에 따라 조정된 데이터의 분산보다 훨씬 클 수 있으므로 $F_T$의 가능한 최소값을 0으로 설정한다.  
+계절추세의 강도도 비슷한 방식으로 나타내고 $F_S$가 0에 가까울수록 계절성이 없다는 것을 의미한다.  
+반면 $F_S$가 1에 가까우면 $Var(R_t)$가 $Var(S_t + R_t)$보다 훨씬 작다는 것을 의미한다.  
+
+$$ F_S = \max\left(0, 1 - \frac{\text{Var}(R_t)}{\text{Var}(S_{t}+R_t)}\right) $$
+
+
+이런 STL-based features들은 `feasts::feat_stl()`함수로 계산이 가능하다.  
+
+```{r}
+tourism %>% features(Trips, feat_stl)
+
+
+```
+
+
+결과를 명확하게 보기위해 plotting을 해보면 어떤 여행 타입이 강한 계절 추세가 나타남을 확인할 수 있다.  
+
+```{r}
+tourism %>% 
+    features(Trips, feat_stl) %>% 
+    ggplot(aes(x = trend_strength, y = seasonal_strength_year, col = Purpose)) +
+    geom_point() +
+    facet_wrap(vars(State))
+
+```
+
+
+녹색점으로 나타난 'Holiday'가 가장 강한 계절 추세를 가지고 있음을 쉽게 확인할 수 있다.  
+계절 추세의 강도가 가장 강하게 나타나는 곳을 필터링하여 찾아낸다.
+
+```{r}
+most_season <- 
+    tourism %>% 
+    features(Trips, feat_stl) %>% 
+    filter(
+        seasonal_strength_year == max(seasonal_strength_year)
+    )
+
+most_season 
+
+```
+
+
+찾아낸 위치를 기준으로 데이터를 합친(left join) 후 plotting을 한다.  
+
+```{r}
+most_season %>% 
+    left_join(tourism, by = c("State", "Region", "Purpose"))
+
+```
+
+```{r}
+most_season %>% 
+    left_join(tourism, by = c("State", "Region", "Purpose")) %>% 
+    ggplot(aes(x = Quarter, y = Trips)) +
+    geom_line() +
+    facet_grid(vars(State, Region, Purpose))
+
+```
+
+
+
+## 4.5 Exploring Australian tourism data
+
+`feasts` package에 포함된 모든 계산을 한 번에 수행하려면 아래와 같이 `feature_set()`함수를 이용한다.  
+
+```{r}
+tourism_features <- 
+    tourism %>% 
+    features(Trips, feature_set(pkgs = "feasts"))
+
+tourism_features
+
+```
+
+
+이 계산을 수행하면 Key로 지정해둔 Region, State, Purpose에 대하여 48가지 features를 조합하여 계산해 준다.  
+계산결과는 features group의 pairwise plot으로 나타낼 수 있다.  
+예시로 아래는 Seasonality에 관련된 features를 모두 모아 `Purpose` 변수로 정리한 것이다.
+
+```{r, message=FALSE, warning=FALSE}
+library(glue)
+tourism_features %>%
+    select_at(vars(contains("season"), Purpose)) %>%
+    mutate(
+        seasonal_peak_year = seasonal_peak_year +
+            4*(seasonal_peak_year==0),
+        seasonal_trough_year = seasonal_trough_year +
+            4*(seasonal_trough_year==0),
+        seasonal_peak_year = glue("Q{seasonal_peak_year}"),
+        seasonal_trough_year = glue("Q{seasonal_trough_year}"),
+    ) %>%
+    GGally::ggpairs(mapping = aes(colour = Purpose))
+
+```
+
+
+**END**
+

@@ -1,0 +1,188 @@
+---
+title: "Chap7_1"
+author: "J.H AHN"
+date: '2021 12 16 '
+output:
+  html_document: default
+  word_document: default
+---
+
+```{r setup, include=FALSE}
+library(fpp3)
+
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## 7.1 The linear model
+
+### Simple linear regression
+
+가장 간단한 케이스로 회귀 모델은 예측변수(forecast variable) $y$와 하나의 예측변수 $x$ 사이에서 만들어지는 선형 관계이다.
+
+$$y_t = \beta_0 + \beta_1 x_t + \varepsilon_t$$
+
+
+아래 Fig 7.1에서 보는 것과 같이 Coefficient $\beta_0$와 $\beta_1$은 각각 선의 절편과 기울기를 나타낸다.  
+절편(intercept) $\beta_0$는 $x=0$일 때 $y$값을 나타내고 기울기 $\beta_1$은 $x$값이 한 단위 증가할 때 $y$가 얼마나 변하는지 평균적으로 예측되는 값을 나타낸다.
+
+![Fig7.1](https://otexts.com/fpp3/fpp_files/figure-html/SLRpop1-1.png)
+
+
+
+중요한 것은 관측치가 직선 위에 있는 것이 아닌 그 주변에 흩어져있다는 사실이다.  
+각 관측치 $y_t$는 $\beta_0 + \beta_1 x_t$와 무작위 오차(error)인 $\varepsilon_t$로 구성된 것으로 생각할 수 있다. 여기서 **오차(error)**는 실수를 의미하는 것이 아니라 기본이 되는 직선(the underlying straight line)과의 편차를 의미한다. 이 오차는 $x_t$외에 $y_t$에 영향을 줄 수 있는 모든 것을 담고 있다.  
+
+
+
+### Example: US consumption expenditure
+
+Fig 7.2에는 분기별 소비지출 변화(성장률)를 시계열로 나타낸 것이다.  
+$y$는 개인 소비지출 변화량, $x$는 개안별 가처분 소득이며, 1970년 1분기에서 2019년 2분기까지이다.
+
+```{r}
+us_change %>% 
+    pivot_longer(c(Consumption, Income), names_to = "Series") %>% 
+    autoplot(value) +
+    labs(y = "% change", title = "Fig 7.2")
+
+```
+
+
+수입 변화에 대한 소비 변화를 나타낸 Scatter plot은 Fig 7.3에서 예상 회귀선과 함께 볼 수 있다.
+
+$$\hat{y}_t=0.54 + 0.27x_t$$
+
+
+```{r}
+us_change %>% 
+    ggplot(aes(x = Income, y = Consumption)) +
+    geom_point() +
+    geom_smooth(method = "lm", se = FALSE) +
+    labs(title = "Fit 7.3",
+         x = "Incom (quarterly % change",
+         y = "Consumption (quarterly % change")
+
+```
+
+
+추세식은 `TSLM()`함수를 이용해서 추정해 볼 수 있다.
+
+```{r}
+us_change %>% 
+    model(TSLM(Consumption ~ Income)) %>% 
+    report()
+
+```
+
+
+`TSLM()`함수는 Chap7_2에서 상세하게 다룰 것이다.  
+
+
+Fitted line은 소득과 소비 사이의 양(positive)의 관계를 반영하는 양의 기울기를 가진다.
+기울기 계수는 $x$가 한 단위 증가(여기서는 개인 가처분 소득이 1%p 증가)할 때마다 $y$가 평균 0.27단위 증가(여기서는 개인 소비지출이 평균 0.27%p)를 만들어 낸다는 것을 보여준다.  
+또는 추정된 방정식은 $x$(개인 가처분 소득의 백분율 증가)에 대한 값이 1이면 $y$(개인 소비지출의 백분율 증가)에 대한 예측값이 $0.52+0.27 \times 1=0.82$가 된다는 것을 보여준다.  
+
+
+
+
+
+절편을 해석하려면 $x=0$값이 의미가 있어야 한다. 이 경우 $x=0$일 때 (즉 지난 분기 이후 개인 가처분 소득의 변화가 없을 때) $y$의 예측값은 0.54(즉 개인 소비지출의 평균 증가율이 0.54%)이다.  
+$x=0$이 의미가 없더라도 절편은 모델에서 중요한 부분이다. 절편이 없으면 기울기가 불필요하게 왜곡될 수 있기 때문이다. 회귀선이 꼭 원점을 통과해야 하는 경우가 아니라면 절편은 꼭 포함되어야 한다.  
+
+
+
+### Multiple linear regression
+
+
+둘 이상의 예측변수가 있을 때, 그 모델은 **다중 회귀 모델(multiple regression model)**이라 한다. 다중 회귀 모델의 일반적인 형태는 아래와 같다.  
+
+
+$$\begin{equation}
+  y_t = \beta_{0} + \beta_{1} x_{1,t} + \beta_{2} x_{2,t} + \cdots + \beta_{k} x_{k,t} + \varepsilon_t,
+  \tag{7.1}
+\end{equation}$$
+
+
+여기서 $y$는 예측할 변수이고 $x_{1},\dots,x_{k}$는 $k$개의 예측변수이다. 각 예측 변수는 숫자여야 한다. coefficient(계수) $\beta_{1},\dots,\beta_{k}$는 모델에 있는 다른 모든 예측 변수의 효과를 고려한 후 각 예측 변수의 효과를 측정한다. 따라서 계수는 예측변수의 한계효과(marginal effects)를 측정한다.  
+
+
+
+
+### Example: US consumption expenditure
+
+Fig 7.4에는 예측 변수를 추가 하는 것이 예측에 유용하다는 것을 보여준다. 추가된 예측변수들은 산업 생산 및 개인 저출의 분기별 백분율 변화와 실업률의 분기별 변화이다. 예측변수를 추가하여 다중선형 예측 변수를 만들면 소비 지출이 개인 소득 뿐만 아니라 다른 예측변수로부터 받는 영향도 고려되므로 더 정확한 예측을 할 수 있다.  
+
+
+```{r}
+us_change %>% 
+    select(-Consumption, -Income) %>% 
+    pivot_longer(-Quarter) %>% 
+    ggplot(aes(x = Quarter, y = value, color = name)) +
+    geom_line() +
+    facet_wrap(~name, scales = "free_y", ncol = 1) +
+    labs(title = "Fig 7.4", y = "% change") +
+    theme(legend.position = "bottom")
+
+
+```
+
+
+Fig 7.5에는 다섯개의 변수로 Scatterplot matrix를 만든 것이다. 첫번째 열은 forecast variable인 소비(consumption)와 각각의 다른 predictors간의 관계를 보여준다. Scatterplots은 소득(income)과 다른 변수들이 양의 상관관계를 가지고 있다는 것을 보여주고 저축(saving)과 실업율(unemployment)과는 음의 상관과계를 가지고 있음을 보여준다. 첫번째 행에는 상관계수(correlation coefficients)로 관련성의 강도를 나타낸다. 나머지 Scatterplots과 Correlation coefficients도 예측변수들 간의 관계를 보여준다.  
+
+
+```{r}
+us_change %>% 
+    GGally::ggpairs(columns = 2:6)
+
+```
+
+
+### Assumptions
+
+선형회귀모델을 사용할 때 Eq 7.1의 변수에 대해 몇 가지 가정을 한다.  
+
+
+첫째, 우리는 모델이 현실에 대한 합리적인 근사치라고 가정한다. 즉 forecast variable과 predictor variable간의 관계가 이 선형 방정식을 충족한다고 본다.  
+
+
+둘째, 오차($(\varepsilon_{1},\dots,\varepsilon_{T})$)에 대해 다음과 같은 가정을 한다.  
+
+
+*오차는 평균이 0이다. 그렇지 않다면 Error값은 systematically biased 된다.  
+
+
+*오차는 자기상관(autocorrelated)이 없다. 자기상관성이 있을 경우 데이터에서 남은 정보가 더 있다는 의미이고 이는 예측의 효율성을 떨어뜨린다.
+
+
+*오차는 predictor variable과 관련이 없다. 관련이 있다면 모델에 반영되어야 할 정보가 남아있다는 뜻이다.  
+
+
+예측 구간을 쉽게 생성하기 위해 오차가 일정한 분산 $\sigma^2$으로 정규분포 되도록 하는 것이 유용하다.  
+
+선형 회귀 모델의 또 다른 중요한 가정은 predictor $x$가 확률변수가 아니라는 것이다. 실험실에서 통제된 실험을 수행하는 경우 각 $x$값을 제어할 수 있고 (따라서 무작위가 아님) 그에 따른 결과값 $y$를 관찰할 수 있다. 관찰데이터를 사용하면 $x$값을 제어할 수 없고 단순히 관찰만 가능하다. 따라서 우리는 $x$(predictor)는 관찰만 가능한 것이라고 가정한다.  
+
+
+
+
+
+
+
+
+
+
+---
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

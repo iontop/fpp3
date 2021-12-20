@@ -1,0 +1,503 @@
+---
+title: "Chap11_1"
+author: "J.H AHN"
+date: '2021 12 17 '
+output: html_document
+---
+
+```{r setup, include=FALSE}
+library(fpp3)
+
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## 11.1 Hierarchical and grouped time series
+
+
+### Hierarchical time series
+
+그림 11.1에 간단한 계측 구조가 있다.  
+계층의 가장 위에는 데이터 레벨이 가장 높은 "Total"이 있다.  
+Total의 $t$번째 관측치는 $t=1, \dots ,T$ 순서에 따라 $y_t$라 명명된다.
+전체 집합은 두 계열로 나눠지고 각 계열은 세 값으로 나눠진다.  
+가장 높은 레벨의 아래를 $y_{j,t}$라고 명명하는데 $t$는 $t$번째 관측치, $j$는 $j$번째 노드를 의미한다.  
+
+
+![Fig 11.1](https://otexts.com/fpp3/figs/hts.png)
+
+
+이런 작은 계층에서 $n=1+2+5=8$로 가장 마지막 레벨(가장 바닥)의 수 $m=5$이다.  
+모든 계층 구조에서 $n>m$이다!  
+
+$t$시점에서 가장 바닥의 관찰 값은 계층의 나머지의 합과 같다.  
+예를 들어 
+
+$$\begin{equation}
+  y_{t}=y_{AA,t}+y_{AB,t}+y_{AC,t}+y_{BA,t}+y_{BB,t},
+  \tag{11.1}
+\end{equation}$$
+
+
+$$\begin{equation}
+  y{A,t}=y_{AA,t}+y_{AB,t}+y_{AC,t}\qquad \text{and} \qquad  y_{B,t}=y_{BA,t}+y_{BB,t}.
+  \tag{11.2}
+\end{equation}$$
+
+
+식(11.2)에서 식(11.1)을 빼면 $y_{t}=y_{A,t}+y_{B,t}$를 얻을 수 있다.  
+
+
+
+### Example: Australian tourism hierarchy
+
+호주는 6개 주와 2개 준주로 나뉘며 각 주마다 자체 정부와 경제 및 행정 자치권이 있다.  
+편의상 주와 지역을 모두 "주"라고 합니다.  
+이러한 각 상태는 Fig 11.2 및 Table 11.1 과 같이 영역으로 더 세분화될 수 있다.  
+총 76개의 그러한 지역이 있다.  
+사업 계획가와 관광 당국은 호주 전체, 각 주와 테리토리, 지역에 대한 예측에 관심이 있다.  
+
+
+
+![Fig 11.2](https://otexts.com/fpp3/fpp_files/figure-html/ausmap-1.png)
+
+
+
+
+|**State**|**Region**|
+|:-------:|:--------:|
+|Australian Capital Territory|Canberra|
+|New South Wales|Blue Mountains, Capital Country, Central Coast, Central NSW, Hunter, New England North West, North Coast NSW, Outback NSW, Riverina, Snowy Mountains, South Coast, Sydney, The Murray.|
+|Northern Territory|Alice Springs, Barkly, Darwin, Kakadu Arnhem, Katherine Daly, Lasseter, MacDonnell.|
+|Queensland|Brisbane, Bundaberg, Central Queensland, Darling Downs, Fraser Coast, Gold Coast, Mackay, Northern Outback, Sunshine Coast, Tropical North Queensland, Whitsundays.|
+|South Australia|Adelaide, Adelaide Hills, Barossa, Clare Valley, Eyre Peninsula, Fleurieu Peninsula, Flinders Ranges and Outback, Kangaroo Island, Limestone Coast, Murraylands, Riverland, Yorke Peninsula.|
+|Tasmania|East Coast, Hobart and the South, Launceston Tamar and the North, North West, Wilderness West.|
+|Victoria|Ballarat, Bendigo Loddon, Central Highlands, Central Murray, Geelong and the Bellarine, Gippsland, Goulburn, Great Ocean Road, High Country, Lakes, Macedon, Mallee, Melbourne, Melbourne East, Murray East, Peninsula, Phillip Island, Spa Country, Upper Yarra, Western Grampians, Wimmera.|
+|Western Australia|Australia’s Coral Coast, Australia’s Golden Outback, Australia’s North West, Australia’s South West, Experience Perth.|
+
+
+
+
+tourism(tsibble 형식 data) 하룻밤의 수는 호주인 가정에서 멀리 보내고 여행으로 측정 분기 국내 관광 수요에 대한 데이터를 포함하고 있다. 
+
+
+```{r}
+tourism
+
+```
+
+
+주요 변수 State및 Region지리적 영역을 나타내는 반면 추가 키 Purpose는 여행 목적을 설명한다.   
+지금은 여행의 목적을 무시하고 지리적 계층 구조만 고려할 것이다.  
+그래프와 표를 더 간단하게 만들기 State위해 약어를 사용하도록 다시 코딩한다.  
+
+```{r}
+library(tsibble)
+
+tourism <- 
+    tourism %>% 
+    mutate(State = recode(State,
+                          `New South Wales` = "NSW",
+                          `Northern Territory` = "NT",
+                          `Queensland` = "QLD",
+                          `South Australia` = "SA",
+                          `Tasmania` = "TAS",
+                          `Victoria` = "VIC",
+                          `Western Australia` = "WA"
+    ))
+
+tourism
+
+```
+
+`fabletools::aggregate_key()`함수를 이용하여 계층 구조의 최하위 수준에 있는 지역을 기준으로 여행(overnight trips) 수를 집계하는 시계열을 만들 수 있으며, 필요하다면 주별 집계, 전국 총계도 나타낼 수 있다.  
+
+
+계층적 시계열 구조는 `aggregate_key()`함수 내에서 `parent/child`관계로 정의해 줄 수 있다.  
+
+
+```{r}
+tourism_hts <- 
+    tourism %>% 
+    aggregate_key(State / Region, Trips = sum(Trips))
+
+tourism_hts
+
+```
+
+`aggregate_key()`만 했을 경우에는 parent/child관계로 묶은 모든 집합에 대한 데이터가 기록이 됨. 즉 계층별 모든 데이터가 들어가있음. parent/child 관계에 묶이지 않은 나머지 데이터는 나타나지 않음. (위의 예에서는 Purpose가 없어짐)
+
+
+이렇게 만들어진 tsibble에는 각 분기의 주별 여행 수를 보여준다.  
+데이터를 시각화해보면 2010년 이후 ACT, New South Wales, Queensland, South Australia 및 Victoria와 같은 일부 주에서 눈에 띄는 성장이 있었다는 것과 2014년에는 서호주에 상당한 도약이 있었다는 것을 확인할 수 있다.  
+
+
+반면 `fabletools::is_aggregated()`함수를 쓰면 Region을 묶어 주게 됨. 위에서 'aggregate_key()`함수만 사용했을 때는 각 region별 데이터가 있었지만, `is_aggregate()`함수로 Region을 기준으로 묶어주면 각 Region별 데이터가 없어지고 Region이 묶인 데이터만 남음.
+
+
+```{r}
+tourism_hts %>% 
+    filter(is_aggregated(Region)) %>% 
+    autoplot(Trips) + 
+    facet_wrap(vars(State), scales = "free_y", ncol = 3) +
+    labs(title = "Fig 11.3-Australian tourism: national and states",
+         y = "Trips ('000)") +
+    theme(legend.position = "bottom")
+
+
+
+```
+
+
+
+```{r}
+tourism_hts %>% 
+    filter(State == "QLD" | State == "NT" | State == "VIC" | State == "TAS") %>%
+    filter(is_aggregated(Region)) %>% 
+    group_by(yearquarter(Quarter), State) %>% 
+    mutate(Trips = sum(Trips)) %>% 
+    ungroup() %>% 
+    ggplot(aes(quarter(Quarter), Trips, color = year(Quarter))) +
+    geom_path() +
+    facet_wrap(vars(factor(State)), scales = "free_y", ncol = 2) +
+    labs(title = "Fig 11.4-Seasonal plots for overnight trips") +
+    scale_color_viridis_c()
+
+
+```
+
+퀸즐랜드(QLD) 및 노던 테리토리(NT)와 같은 북부 주의 계절 패턴은 열대 기후와 비가 오는 여름 개월로 인해 겨울(Q3에 해당)에 방문이 가장 많다.  
+대조적으로, 남부 주들은 여름에 최고조에 달하는 경향이 있다(Q1에 해당).  
+이것은 Fig 11.4 에서 퀸즐랜드와 노던 테리토리(위쪽 열에 표시)와 빅토리아(VIC)와 태즈메이니아(TAS,최남단 주)(아래쪽 열에 표시)에 대한 계절 플롯에서 확인할 수 있다.   
+
+
+
+
+```{r}
+tourism_hts %>% 
+    filter(State == "NSW" | State == "SA" | State == "QLD" | 
+               State == "NT" | State == "VIC" | State == "TAS") %>%
+    filter(!is_aggregated(Region)) %>% 
+    autoplot(Trips) +
+    facet_wrap(vars(State), scales = "free_y", ncol = 3) +
+    labs(title = "Fig 11.5-Australian tourism:by region nested within states") +
+    theme(legend.position = "none")
+
+
+```
+
+
+Fig 11.5 의 plot은 일부 선택된 지역에 대한 데이터를 보여줍니다.  
+이를 통해 어떤 지역은 강한 경향이나 계절성을 보여주고, 어떤 지역은 대조적인 계절성을 보여주고, 어떤 지역은 그냥 노이즈로 보이는 각 주 내에서 다양한 지역 역학을 시각화하는 데 도움이 된다.  
+
+
+
+
+
+### Grouped time series
+
+
+그룹화된 시계열은 데이터 구조가 고유한 계층적 방식으로는 자연스럽게 나눌 수 없다.  
+Fig 11.6에 간단한 그룹화된 구조가 있다.  
+가장 상단의 그룹을 Total이라 하고 가장 통합(aggregate)이 많이 된 수준의 값이다.  
+이를 $y_t$라 하자.  
+Total은 속성(A, B)로 나눠지고 이 계열을 $y_{A,t}$와 $y_{B,t}$로 한다.  
+속성 (X,Y)로 나눠지는 계열은 $y_{X,t}$와 $y_{Y,t}$라 한다.  
+가장 아래 수준에는 두 속성이 분해된 데이터가 있게 된다.  
+
+![Fig 11.6](https://otexts.com/fpp3/fpp_files/figure-html/GroupTree-1.png)
+
+
+이 예시는 그룹화된 구조에서는 대안적인 통합 경로를 가질 수 있음을 보여준다.  
+A,B로 각각 그룹화 할 수도 있고 X,Y로 각각 그룹화 할 수도 있다는 의미  
+
+$t$시점에서 계층구조는 아래와 같다.  
+
+
+$$\begin{equation*}
+y_{t}=y_{AX,t}+y_{AY,t}+y_{BX,t}+y_{BY,t}.
+\end{equation*}$$
+
+
+그러나 그룹화된 구조의 첫 번째 수준은 
+
+
+$$\begin{equation} y_{A,t}=y_{AX,t}+y_{AY,t}\quad \quad y_{B,t}=y_{BX,t}+y_{BY,t}
+\tag{11.3}
+\end{equation}$$
+
+가 될 수도 있고,
+
+
+$$\begin{equation} y_{X,t}=y_{AX,t}+y{BX,t}\quad \quad y_{Y,t}=y_{AY,t}+y_{BY,t}
+\tag{11.4}.
+\end{equation}$$
+
+
+가 될 수도 있다.
+
+
+때로는 그룹화된 시계열은 그룹화할 수 있는 순서가 고유하지 않다는 의미에서 고유한 계층 구조를 부과하지 않는 계층적 시계열로 간주하기도 한다.  
+
+
+
+### Example: Australian prison population
+
+이번 예시에서 호주 교도소 수감자수 데이터를 이용할 것이다.  
+Fig 11.7의 상단 패널은 2005Q1-2016Q4 기간 동안 호주에 있는 총 수감자 수를 보여줍니다.  
+상단 plot은 그룹화 구조의 최상위 계열을 나타낸다.  
+
+
+아래 패널은 (a)주 (b)법적 지위(피구금자가 이미 형을 선고받았거나 형을 기다리고 있는지 여부) 및 (c)성별에 따라 분류되거나 그룹화된 교도소 수감자수를 보여준다.  
+세 가지 요소가 교차하지만 다른 요소 안에 내포된 요소는 없다.  
+
+
+```{r}
+prison <- 
+    readr::read_csv("https://OTexts.com/fpp3/extrafiles/prison_population.csv") %>%
+    mutate(Quarter = yearquarter(Date)) %>%
+    select(-Date)  %>%
+    as_tsibble(key = c(Gender, Legal, State, Indigenous),
+               index = Quarter) %>%
+    relocate(Quarter)
+
+prison
+
+```
+
+
+`aggregate_key()`함수를 사용해서 시계열을 그룹화 할 수 있다.  
+그룹화를 시킬 속성들은 `attribute1 * attribute2`와 같은 구문으로 쓸 수 있다.  
+아래는 주(State), 성별(Gender), 법적지위(Legal)를 각각 그룹화하여 시계열을 만든 예이다.  
+
+
+```{r}
+prison_gts <-  
+    prison %>% aggregate_key(State * Gender * Legal, Count = sum(Count) / 1e3)
+
+
+prison_gts
+
+```
+
+
+```{r}
+p01 <- 
+prison_gts %>%
+    filter(is_aggregated(Gender), is_aggregated(State), is_aggregated(Legal)) %>%
+    autoplot(Count) + labs(title = "Fig 11.7-Prison population: Total") +
+    theme(legend.position = "none")
+
+```
+
+```{r}
+prison_gts %>%
+    filter(!is_aggregated(Gender), !is_aggregated(State), !is_aggregated(Legal)) %>% 
+    autoplot(Count) + facet_wrap(~ ., scales = "free_y") +
+    theme(legend.position = "bottom")
+
+
+
+```
+
+
+
+
+```{r}
+p02 <- 
+prison_gts %>%
+    filter(!is_aggregated(Gender), is_aggregated(State), is_aggregated(Legal)) %>%
+    autoplot(Count) + theme(legend.position = "none")
+
+```
+
+```{r}
+p03 <- 
+prison_gts %>%
+    filter(is_aggregated(Gender), is_aggregated(State), !is_aggregated(Legal)) %>%
+    autoplot(Count) + theme(legend.position = "none")
+
+```
+
+```{r}
+p04 <- 
+prison_gts %>%
+    filter(is_aggregated(Gender), !is_aggregated(State), is_aggregated(Legal)) %>%
+    autoplot(Count) + theme(legend.position = "none")
+```
+
+```{r}
+library(patchwork)
+
+p01 / (p02 + p03 + p04)
+
+```
+
+
+
+`is_aggregate()`함수를 `filter()`함수에 넣어 사용하면 원하는 그룹의 데이터를 찾는데 수월하다.  
+예를 들어 전체 수감자 중 남성과 여성 수감자를 분리하여 보고 싶다면 아래 예시와 같이 성별(Gender)이 통합(aggregate)된 데이터는 빼고 나머지는 통합된 데이터만 가져오면 된다.  
+
+
+```{r}
+p1 <- 
+prison_gts %>% 
+    filter(!is_aggregated(Gender), !is_aggregated(State), is_aggregated(Legal)) %>% 
+    autoplot(Count) +
+    facet_wrap(~ State, scales = "free_y", nrow = 1) +
+    labs(title = "Fig 11.8-Prision population State and gender") +
+    theme(legend.position = "none")
+
+
+```
+
+
+```{r}
+p2 <- 
+prison_gts %>% 
+    filter(is_aggregated(Gender), !is_aggregated(State), !is_aggregated(Legal)) %>% 
+    autoplot(Count) +
+    facet_wrap(~ State, scales = "free_y", nrow = 1) +
+    labs(title = "Fig 11.8-Prision population State and legal status") +
+    theme(legend.position = "none")
+
+
+```
+
+
+```{r}
+p3 <- 
+prison_gts %>% 
+    filter(!is_aggregated(Gender), is_aggregated(State), !is_aggregated(Legal)) %>% 
+    autoplot(Count) +
+    facet_wrap(~ Gender, scales = "free_y", nrow = 1) +
+    labs(title = "Fig 11.8-Prision population gender and legal status") +
+    theme(legend.position = "none")
+
+
+```
+
+
+```{r}
+p1 / p2 / p3
+
+
+```
+
+
+
+
+### Mixed hierarchical and grouped structure
+
+
+종종 분해 요인은 중첩되기도 하고 교차되기도 한다.  
+예를 들어, 호주 관광 데이터는 휴가, 비즈니스, 친구 및 친척 방문, 기타의 4가지 여행 목적으로 세분화할 수도 있다.  
+이 그룹화 변수는 지리적 변수 내에 중첩되지 않는다.  
+사실, 우리는 호주 전체, 각 주, 각 지역에 대한 여행 목적에 따라 밤샘 여행을 나눌 수 있다.  
+우리는 그러한 구조를 여행 목적과 "교차"하는 "중첩된" 지리적 계층 구조로 설명한다.  
+`aggregate_key()`를 사용하여 이런 중첩되기도 하고 계층을 가진 구조를 간단하게 나타낼 수 있다.  
+
+
+```{r}
+tourism_full <- 
+    tourism %>%
+    aggregate_key((State/Region) * Purpose, Trips = sum(Trips))
+
+tourism_full
+
+```
+
+
+`aggregate_key()`함수를 이용해서 State와 Region은 `parent/child`의 계층적 구조로 만든 후 이 계층과 Purpose를 각각의 그룹으로 나타내었다.  
+
+
+```{r}
+tourism_full %>% 
+    filter(!is_aggregated(Region), !is_aggregated(Purpose))
+
+```
+
+
+`aggregate_key()`적용 결과 통합하지 않은 데이터가 총 304종류
+
+
+```{r}
+tourism_full %>% 
+    filter(!is_aggregated(Region), is_aggregated(Purpose))
+
+```
+
+```{r}
+tourism_full %>% 
+    filter(!is_aggregated(State), !is_aggregated(Purpose)) %>% 
+    ggplot(aes(Quarter, Trips, color = factor(Purpose))) +
+    geom_line() +
+    facet_wrap(vars(factor(State)), ncol = 4, scales = "free_y") +
+    labs(color = "Purpose")
+
+
+```
+
+
+
+
+```{r}
+tourism_full %>% 
+    filter(!is_aggregated(Region), is_aggregated(Purpose)) %>% 
+    autoplot(Trips) + facet_wrap(vars(State), scales = "free_y", ncol = 3) +
+    theme(legend.position = "none")
+
+
+```
+
+
+지역별 계층구조로 만들어진(= 목적을 구분하지 않고 지역만으로 구분한) 데이터가 76종류
+
+
+```{r}
+tourism_full %>% 
+    filter(is_aggregated(Region), !is_aggregated(Purpose))
+
+
+```
+
+
+
+```{r}
+tourism_full %>% 
+    filter(is_aggregated(Region), !is_aggregated(Purpose)) %>% 
+    autoplot(Trips) + facet_wrap(vars(State), scales = "free_y", ncol = 4) +
+    labs(title = "Fit 11.10-Australian Tourism:by purpose of travel") +
+    theme(legend.position = "none")
+
+
+
+```
+
+
+지역을 묶고 목적별로 나눈 데이터가 36종류
+
+
+
+```{r}
+tourism_full %>% 
+    filter(is_aggregated(Region), is_aggregated(Purpose))
+
+
+```
+
+
+지역과 목적을 모두 묶어 주별 여행자수만 나오는 데이터가 9종으로 304종(원래) + 76종(목적을 묶은 데이터) + 34종(지역을 묶은 데이터) + 9종(둘 다 묶은 데이터) = 425종의 데이터가 만들어진다.  
+
+
+
+
+
+
+
+
+
+
+
+
+
+---

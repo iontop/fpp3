@@ -1,0 +1,243 @@
+---
+title: "Chap7_7"
+author: "J.H AHN"
+date: '2021 12 17 '
+output: html_document
+---
+
+```{r setup, include=FALSE}
+library(fpp3)
+
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## 7.7 Nonlinear regression
+
+비선형 관계를 모델링하는 가장 간단한 방법은 회귀 모델을 추정하기 전에 forecast variable $y$및 predictor variable $x$를 변환하는 것이다.  
+이러한 함수를 적용하면 비선형적이었던 데이터가 선형성을 가지게 된다.  
+일반적으로 사용되는 변환은 (자연)로그이다.  
+
+
+log-log 변환은 아래와 같이 수행된다.
+
+$$\log y=\beta_0+\beta_1 \log x +\varepsilon$$
+
+
+이 모델에서 기울기 $\beta_1$은 $x$의 1% 증가로 인한 $y$의 평균 백분율 변화이다.  
+
+다른 유용한 형식도 적용할 수 있다. **log-linear**형식은 forecast variable만 변환하고 **linear-log**형식은 predictor를 변환하여 얻는다.  
+
+
+변수에 로그변환(logarithmic transformation)을 할 때는 모든 값이 0보다 커야한다.  
+변수 $x$에 0이 포함된 경우 $log(x+1)$을 사용해야 한다. 즉 변수값에 1을 더한 다음 로그를 취해야 한다. 이러한 방법은 로그변화을 하면서 0의 값을 가질 때 발생할 수 있는 문제를 피하게 해 준다. 또한 1을 더해줌으로써 0을 로그변화해도 여전히 0으로 남아있어 scale로 인한 문제가 발생할 수 있는 것도 방지할 수 있다.    
+
+
+
+단순히 데이터를 변환하는 것이 적절하지 않고 더 가공이 필요한 경우도 있다.  
+
+$$y=f(x) +\varepsilon$$
+
+
+여기서 $f$는 비선형 함수이다.  
+일반적인 (선형) 회귀는 $f(x)=\beta_{0} + \beta_{1} x$ 꼴로 나타낼 수 있다.  
+뒤에서 볼 비선형 회귀 방법을 통해 로그변환이나 다른 변화과 비교해서 좀 더 유연한 형태의 비선형 함수를 만들 것이다.  
+
+
+그 중 가장 간단한 방법 중 하나는 $f$를 조각내어 선형으로 만드는 것이다.  
+즉 $f$의 기울기가 변할 수 있는 점을 찾고 (이 점을 노트knots라고 한다.) $x_{1,t}$로 둔 다음 $x_{2,t}$를 대입하여 만들 수 있다.   
+
+
+$$\begin{align*}
+  x_{2,t} = (x-c)_+ &= \left\{
+             \begin{array}{ll}
+               0 & \text{if } x < c\\
+               x-c &  \text{if } x \ge c.
+             \end{array}\right.
+\end{align*}$$
+
+
+
+$(x-c)_+$ 표기법은 양수이면 $(x-c)$가 되고 그렇지 않으면 0이 된다는 것을 의미한다.  
+이렇게 하면 기울기가 점 $c$에서 바뀌게 된다.  
+위 방법에 추가 변수를 두면 기울기가 더 바뀌게 만들 수도 있다.  
+
+
+이러한 방식으로 구성된 조각별 선형관계(Piecewise linear relationships)는 회귀 스플라인의 특별한 케이스이다.  일반적으로 선형 회귀 스플라인은 아래의 방식으로 얻을 수 있다.   
+
+
+$$x_{1}= x \quad x_{2} = (x-c_{1})_+ \quad\dots\quad x_{k} = (x-c_{k-1})_+$$
+
+
+$c_{1},\dots,c_{k-1}$은 노트(knots, 선이 굽어지는 점)이다. 노트의 숫자$(k-1)$와 어느 위치를 지정해야 하는지는 어렵고 다소 임의적일 수 있다.  일부 자동 선택 알고리즘이 있긴하지만 잘 사용하지는 않는다.   
+
+
+
+
+### Forecasting with a nonlinear trend
+
+Chap7_4에서 $x=t$로 설정하여 시계열 데이터를 선형 추세로 적합하는 것을 소개했었다.  
+비선형 추세를 적합하는 가장 간단한 방법은 2차 또는 고차의 추세를 사용하는 것이다.  
+
+
+$$x_{1,t} =t,\quad x_{2,t}=t^2,\quad \dots.$$
+
+
+그러나 2차 또는 고차 추세를 예측에 사용하는 것은 권장하지 않는다.  
+이런 방법으로 외삽(extrapolated)하게 되면 예측 결과가 비현실적이 되기 때문이다.  
+
+
+더 나은 방법은 위에서 소개한 선형구간을 조각내어 사용하는 것이다.  
+여러 개의 선형 추세로 구성된 비선형 추세로 보면, 추세가 변화하는 시점을 $\tau$라 두고, $x=t$, $c=\tau$로 바꾸면 모델에 아래와 같이 predictor를 넣을 수 있다.  
+
+
+$$\begin{align*}
+  x_{1,t} & = t \\
+  x_{2,t} &= (t-\tau)_+ = \left\{
+             \begin{array}{ll}
+               0 & \text{if } t < \tau\\
+               t-\tau &  \text{if } t \ge \tau
+             \end{array}\right.
+\end{align*}$$
+
+
+
+만약 $x_{1,t}$, $x_{2,t}$의 계수가 $\beta_{1}$, $\beta_{2}$이면, $\beta_{1}$은 시간 $\tau$전의 추세의 기울기가 되고, 시간 $\tau$후의 선의 기울기는 $\beta_{1} + \beta_{2}$로 주어진다.  
+추가적인 기울기 변화를 주기 위해서는 $(t-\tau)_+$형식의 변수를 추가하면 된다.  여기서 $\tau$는 추세의 기울기가 바뀌는 점 "knots"를 의미한다.  
+
+
+
+
+### Example: Boston marathon winning times
+
+
+보스톤 마라톤 우승기록(남자) 데이터를 이용하여 추세를 모델링 해 볼 것이다.  
+우선 남자들의 데이터를 추출하고 우승기록을 숫자형식으로 바꿀 것이다.  
+코스길이가 1924년에 24.5마일에서 26.2마일로 늘어나서 우승기록이 크게 뛰었다.  
+그래서 데이터는 1924년 이후 데이터만 가지고 만들 것이다.  
+
+
+```{r}
+boston_men <- 
+    boston_marathon %>% 
+    filter(Year >= 1924) %>% 
+    filter(Event == "Men's open division") %>% 
+    mutate(Minutes = as.numeric(Time/60))
+
+```
+
+```{r}
+library(patchwork)
+
+p1 <- 
+    boston_men %>% 
+    ggplot(aes(Year, Minutes)) +
+    geom_line() +
+    geom_smooth(method = "lm", se = FALSE) +
+    labs(title = "Fig 7.20-Boston marathon winning times")
+
+p2 <- 
+    boston_men %>% 
+    model(TSLM(Minutes ~ Year)) %>% 
+    residuals() %>% 
+    ggplot(aes(Year, .resid)) +
+    geom_line() +
+    labs(title = "Residulas from a linear trend")
+
+p1 / p2
+
+```
+
+
+지수추세(exponential trend - log-linear regression과 동일한 효과)를 주기위해서 아래와 같이 $y$를 변환하여 모델을 만들 수 있다.  
+
+
+$$\log y_t=\beta_0+\beta_1 t +\varepsilon_t.$$
+
+
+fitted된 지수추세와 예측은 Fig 7.21에 보여진다.  
+비록 지수 추세가 데이터에 잘 적합한 것처럼 보이지 않지만 좀 더 선형적인 추세를 가지는 것을 볼 수 있다.  아마도 우승기록이 미래에 감소하는 추세가 고정된 선형 비율로 감소하는 것보다 시간이 지남에 따라 감소 추세가 줄어들 것이라고 추정하는 것이 좀 더 합리적인 예측이라고 볼 수 있다.  
+
+
+우승기록 plot은 세가지 다른 주기를 보여준다.  
+약 1950년까지는 우승시간에 많은 변동이 있었으나 크게 감소하지는 않았었다.  
+1950년이후에는 시간이 확실히 줄어들었고, 1980년 이후에는 거의 변화가 없다가 최근에는 도리어 상승하는 추세를 보인다.  
+
+이러한 주기적인 움직임을 잡아내기 위해서 1950년과 1980년에 knot를 설정한다.  
+여기서 knots를 어떻게 주느냐에 따라 예측 모델에 악영향을 미치는 overfitting이 될 수도 있기 때문에 주의해야 한다.  
+
+
+
+```{r}
+fit_trends <- 
+    boston_men %>% 
+    model(
+        linear = TSLM(Minutes ~ trend()),
+        exponential = TSLM(log(Minutes) ~ trend()),
+        piecewise = TSLM(Minutes ~ trend(knots = c(1950, 1980)))
+    )
+
+fitted(fit_trends)
+
+```
+
+
+
+```{r}
+fc_trends <- fit_trends %>% forecast(h = 10)
+
+fc_trends
+
+```
+
+
+`stats::fitted()`함수는 모델링 함수에 의해 반환된 object로 부터 fitted value를 반환하는 함수이다.
+
+
+```{r}
+boston_men %>% 
+    autoplot(Minutes) +
+    geom_line(data = fitted(fit_trends),
+              aes(y = .fitted, color = .model)) +
+    autolayer(fc_trends, alpha = 0.5, level = 95) +
+    labs(title = "Fig 7.21-Boston marathon winning times",
+         y = "Minutes")
+
+
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+---
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

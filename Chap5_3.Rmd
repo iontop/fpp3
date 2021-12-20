@@ -1,0 +1,277 @@
+---
+title: "Chap5_3"
+author: "J.H AHN"
+date: '2021 12 7 '
+output:
+  word_document: default
+  html_document: default
+---
+
+```{r setup, include=FALSE}
+library(fpp3)
+
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## 5.3 Fitted values and residuals
+
+
+### Fitted values 
+시계열에서 각 관측값은 이전의 모든 관측치를 이용하여 예측할 수 있고, 이렇게 예측된 값을 적합값(fitted values)라 함.  
+관측값(observations) $y_{1},\dots,y_{t-1}$을 이용하여 예측한 $y_t$라는 의미로 $\hat{y}_{t|t-1}$와 같이 쓴다.  
+사실, 미래 관측값을 포함하여 사용할 수 있는 모든 관측값으로 예측 기법에 들어가는 매개변수를 추정했기 때문에 적합값(fitted value)은 종종 진짜 예측(true forecasts)이 아니다.  
+예를 들어 만약 우리가 평균 기법을 사용한다고 하면, 적합값은 $\hat{y}_t = \hat{c}$으로 주어진다.  
+여기서 $\hat c$는 $t$시간이 지난 후 것들을 포함하여 가능한 모든 관측치의 계산값의 평균을 의미한다.  
+
+drift method를 사용했다면, drift parameter는 모든 사용 가능한 관측값을 사용한 것으로 추정(estimate)한 것으로 보고 적합값을 $\hat{y}_t = y_{t-1} + \hat{c}$와 같이 나타낼 수 있다.  
+이 경우 $\hat{c} = (y_T-y_1)/(T-1)$이다.  
+
+$c$값을 예측할 때 시간$t$이후의 관측값이 포함되어 있다면 적합값은 진짜 예측값이라 볼 수 없지만, naive 혹은 seasonal naive와 같이 시간$t$이후의 관측값이 포함되어 있지 않다면 적합값은 진짜 예측값이라 할 수 있다.  
+
+
+### residuals
+
+시계열 모델에서 “잔차(Residuals)”는 모델을 맞춘 후에 남는 것을 의미한다.  
+다양한 (하지만 전부는 아닌) 시계열 모델에서, 잔차(residual)는 관측값과 대응되는 적합값(fitted value)과 관측값의 차이이다.  
+
+$$e_{t} = y_{t}-\hat{y}_{t}$$
+
+만약 변환한 모델에서 변환된 스케일로 발생한 잔차는 **"innovation residuals"**이라 하고 이 잔차들은 모델을 평가하는데 유용하게 사용된다.  
+
+예를 들어 모델을 로그 변환하여, $w_t = \log(y_t)$로 만들었다면 innovation residuals은 $w_t - \hat{w}_t$로 나타낼 수 있고, regular residuals은 $y_t - \hat{y}_t$로 나타낼 수 있다.  
+
+
+어떤 모델에서 적합값과 잔차를 얻기 위해서는 `augment()`함수를 사용한다.
+
+```{r}
+# Set training data from 1992 to 2006
+train <- aus_production %>%
+    filter_index("1992 Q1" ~ "2006 Q4")
+# Fit the models
+beer_fit <- train %>%
+    model(
+        Mean = MEAN(Beer),
+        `Naïve` = NAIVE(Beer),
+        `Seasonal naïve` = SNAIVE(Beer)
+    )
+
+```
+
+
+```{r}
+augment(beer_fit)
+
+```
+
+결과에서  
+
+* `.fitted`는 적합값을 의미
+* `.resid`는 잔차를 의미
+* `.innov`는 innovation residuals를 의미하는데 이 경우는 (변환이 없어)잔차와 동일한다.
+
+잔차(residuals)는 모델이 적절하게 정보를 담아냈는지 확인하는데 유용하다.  
+이런 목적으로 innovation residuals을 사용하는데 만약 innovation residuals이 어떤 패턴을 가진다면 모델은 더 개선할 여지가 있다는 의미이다. (중요! 잔차는 어떠한 상관관계나 추세를 가져서는 안된다.)  
+
+
+
+## 5.4 Residual diagnostics
+
+
+좋은 예측 기법은 다음과 같은 특징을 갖는 잔차(residual)가 발생한다.  
+
+1. 잔차(residual)에 상관 관계가 없다.  
+잔차 사이에 상관관계(correlation)가 있다면, 잔차에 예측값을 계산할 때 사용해야하는 정보가 남아 있다는 의미다.  
+
+2. 잔차의 평균이 0이다.  
+잔차의 평균이 0이 아니라면, 예측값이 편향(bias)될 수 있다.  
+
+이러한 특징을 만족하지 않는 예측 기법은 개선할 필요가 있다.  
+이러한 특징 중에서 하나를 만족하지 않는다면, 더 나은 예측치를 내는 기법으로 수정될 수 있다.  
+예를 들어 편향(bias)을 보정해야 한다면, 잔차의 평균이 $m$이면, 단순히 모든 예측치에 $m$을 더하여 편향 문제를 해결할 수 있다.  
+상관(correlation) 문제를 고치는 것은 어렵기 때문에 이후에 별도로 다룬다.  
+
+이러한 핵심적인 특징에 더하여, (필수적인 것은 아니지만) 다음과 같은 잔차의 두 가지 성질도 유용합니다.
+
+3. 잔차의 분산이 상수이다.  
+
+4. 잔차가 정규 분포를 따른다.  
+
+이러한 두 가지 성질은 예측구간(prediction interval)을 계산하기 쉽도록 만든다.  
+하지만, 이러한 특징을 만족하지 않는 어떤 예측 기법이 무조건 나쁘다는 것이 아니고 때때로 박스-칵스(Box-Cox) 변환을 적용하면 이러한 특징이 만족되는 경우도 있다.  
+
+Box-Cox변환으로도 위 특성을 만족시키지 못한다면 잔차(residual)의 분산이 상수이면서 정규 분포(normal distribution)를 가질 수 있도록 할 수 있는 일이 보통은 거의 없습니다.  
+대신에 예측 구간(prediction interval)을 얻기 위해 다른 방식이 필요합니다.  
+
+
+### Example: Forecasting Google daily closing stock prices
+
+구글의 주가를 예시로 살펴보자.  
+구글 주가는 2015년 7월 17일날 16%가 상승하여 아래와 같은 추세를 나타내었다.  
+
+```{r}
+# Re-index based on trading days
+google_stock <- 
+    gafa_stock %>%
+    filter(Symbol == "GOOG", year(Date) >= 2015) %>%
+    mutate(day = row_number()) %>%
+    update_tsibble(index = day, regular = TRUE)
+
+# Filter the year of interest
+google_2015 <- 
+    google_stock %>% 
+    filter(year(Date) == 2015)
+
+google_2015
+
+```
+
+```{r}
+autoplot(google_2015, Close) + 
+    labs(y = "$US",
+         title = "Google daily closing stock prices in 2015")
+
+
+```
+
+
+naive method를 사용하여 이 시계열 데이터를 예측할 경우 발생하는 잔차는 아래와 같다.  
+7월에 주가가 크게 뛰었을 때 큰 잔차가 발생함을 확인할 수 있다.  
+
+```{r}
+aug <- 
+    google_2015 %>% 
+    model(NAIVE(Close)) %>% 
+    augment()
+
+aug
+
+```
+
+```{r}
+aug %>% autoplot(.innov) +
+    labs(y = "$US",
+         title = "Fig.1 - Residuals from the naive method")
+
+```
+
+```{r}
+aug %>% ggplot(aes(.innov)) +
+    geom_histogram(color = "#FFFFFF", fill = "#191970") +
+    labs(title = "Fig.2 - Histgram of residuals")
+
+
+```
+
+
+```{r}
+aug %>% 
+    ACF(.innov) %>% 
+    autoplot() +
+    labs(title = "Fig.3 - Residuals from the naive method")
+
+
+```
+
+위 그래프로 사용 가능한 정보가 모두 포함되어 있는 (= 잘 만들어진) 모델로 예측되고 있음을 알 수 있다.  
+잔차의 평균은 0에 가깝고(Fig.1, Fig.2), 잔차 계열에는 유의미한 상관관계가 없다.(Fig.3) 
+잔차의 자기상관에는 하나의 이상치를 제외하고는 과거 데이터에서 잔차 변동이 거의 동일하게 유지되고 분산이 일정하다는 것을 알 수 있다. (Fig.3)  
+이는 Fig.2 히스토그램에서도 확인할 수 있다. 히스토그램의 오른쪽에 이상치가 일부 존재하지만 이 예측모델은 나쁘지 않겠지만 이부 예측 구간은 부정확 할 수도 있다고 예상할 수 있다.  
+
+이러한 잔차 진단 그래프를 한 번에 편리하게 만들기 위해 `feasts::gg_tsresiduals()`함수를 사용할 수 있다.
+
+```{r ,warning=FALSE}
+google_2015 %>% 
+    model(NAIVE(Close)) %>% 
+    gg_tsresiduals()
+
+
+```
+
+
+### Portmanteau tests for autocorrelation
+
+ACF Plot을 보는 것 외에 각각의 잔차를 확인하는 대신 전체 $r_f$값을 묶어서 자기상관을 확인할 수 있다.  
+
+$r_k$는 시차 $k$에 대한 자기상관을 의미한다. 잔차가 튀는 수준이 허용 가능한 범위 내에 있는지 확인하기 위해 ACF Plot을 확인하지만 명시적이고 정량적인 값이 없기 때문에 놓칠 가능성도 있다.  
+이런 테스트를 충분하게 많이 하면 적어도 하나의 테스트에서는 False positive를 결론으로 낼 수 있기 때문에 테스트에서 잔차에 자기 상관이 없다고 나오더라도 실제는 자기상관성을 가지고 있을 수도 있다.  
+
+이러한 문제를 극복하기 위해서 첫번째 $\ell$자기상관이 White noise와 다른지 테스트해야 한다.  
+자기상관에 대한 테스트를 포르망토 테스트(portmanteau test)라고 하며, 이는 여러 의류 항목을 나르는 여행가방이나 옷걸이를 설명하는 프랑스어 단어에서 유래하였다.  
+
+이런 테스트 중 하나로 아래 수식으로 표현되는 Box-Pierce test가 있다.  
+
+$$Q = T \sum_{k=1}^\ell r_k^2$$
+
+where, $\ell$: 관측치 $T$를 고려한 최대 lag  
+
+만약 각각의 $r_k$가 0에 가까이 가게되면, $Q$는 작아진다. 반대로 만약 각각의 $r_k$이 커지게 되면(음수든 양수든) $Q$는 커진다.  
+계절추세이 없는 데이터는 $\ell = 10$을 사용하고, 계절추세가 있는 데이터는 $\ell = 2m$ (여기서 $m$은 계절추세의 기간)를 사용하는 것이 일반적이다.  
+그러나 $\ell$이 클 경우에는 테스트 결과가 좋지 않으므로 이 값들이 $T/5$보다 클 경우에는 $\ell = T/5$를 사용한다.  
+이와 관련된 (좀 더 정확한) 시험으로는 **Ljung-Box test가 있다.
+
+$$Q^* = T(T+2) \sum_{k=1}^\ell (T-k)^{-1}r_k^2$$
+
+큰 값의 $Q^*$는 자기상관성이 White noise에서 온 것이 아님을 의미한다.  
+얼마나 커야 큰 값이라 볼 수 있을까?  
+만약 자기상관성이 White noise에서 오지 않았다면 $Q$와 $Q^*$는 $(\ell - K)$자유도에서 $\chi^2$분포를 나타낼 것이다. (여기서 $K$는 모델의 Parameter 수를 의미한다. 모델으로 부터 나온 잔차가 아닌 Raw data로 계산하여 나온 잔차라면 $K$값은 0으로 보면 된다.)  
+
+구글 주가 예제로 돌아와서 naive method는 parameter가 없으므로 $K=0$으로 볼 수 있다.  
+코드에서 $\ell=$`lag`, $K=$`dof`로 표현된다.  
+
+```{r}
+aug %>% 
+    features(.innov, box_pierce, lag = 10, dof = 0)
+
+```
+
+```{r}
+aug %>% 
+    features(.innov, ljung_box, lag = 10, dof = 0)
+
+```
+
+테스트 결과 $Q$와 $Q^*$모두 특별한 점을 확인할 수 없다. (p-value가 상대적으로 크다.)  
+Ljung-box test는 결과로 산출되는 $Q^*$값이 중요한데, 결과에서 보는 바와 같이 p-value가 0.05보다 크기 때문에 통계적으로 유의미하지 않다고 본다. 따라서 유의미하지 않다면 (0.05보다 크다면) 해당 시계열의 잔차의 자기상관성은 White noise와 다르지 않다(= white noise이다.)고 판단할 수 있다.  
+
+또 다른 주가 예측을 위한 기법으로는 drift method가 있다.  
+```{r}
+fit <- 
+    google_2015 %>% 
+    model(RW(Close ~ drift()))
+
+tidy(fit)
+```
+
+
+`tidy()`함수로 예측 파라미터(estimated parameter)인 drift coefficient(b, 관측치에서 측정된 일평균 변화량)이 있음을 확인할 수 있다.  
+따라서 Ljung-Box test를 할 때는 estimated parameter를 반영하여 $K=1$로 설정해야 한다.  
+```{r}
+augment(fit) %>% 
+    features(.innov, ljung_box, lag = 10, dof = 1)
+
+```
+
+random walk method를 사용한 모델의 $Q^*$값도 충분히 큰 p-value가 확인되었으므로 잔차가 white noise와 다르지 않다고 볼 수 있다.
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

@@ -1,0 +1,140 @@
+---
+title: "Chap5_10"
+author: "J.H AHN"
+date: '2021 12 9 '
+output:
+  word_document: default
+  html_document: default
+---
+
+```{r setup, include=FALSE}
+library(fpp3)
+
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## 5.10 Time series cross-validation
+
+training set과 test set으로 나누는 방법을 좀 더 정교하게 하기 위한 것이 시계열 교차 검증(time series cross-validation)이다.  
+교차검증에는 단일 관측값으로 구성된 일련의 test set이 있고 해당 training set은 test set을 구성하는 관측치 이전 관측치로만 구성된다.  
+따라서 training set으로 모델을 만들 때 (training set 기준으로) 미래의 관측값은 사용되지 않는다.  
+training set이 작으면 신뢰할 만한 예측 모델을 만들 수 없기 때문에 첫 번째 관측치들은 test set으로 간주하지 않는다.  
+
+이를 쉽게 표현한 그림이 있다.  
+파란색은 training set, 주황색은 test set의 관측치를 의미한다.  
+
+![](https://otexts.com/fpp3/fpp_files/figure-html/cv1-1.svg)
+
+
+
+예측 정확도는 test set으로 평가한 결과의 평균으로 계산된다.  
+이렇게 하는 이유는 예측의 기반이 되는 기준점(training set과 test set이 나눠지는 시점)이 시간에 따라 뒤로 밀리기(roll forward) 때문에  “evaluation on a rolling forecasting origin”라고 표현되기도 한다.  
+
+시계열 예측에서는 one-step forecast이 multi-step forecast와 관련이 없을 수도 있다.  
+이런 경우 rolling forecasting origin에 기반한 교차 검증을 수행하여 오류를 줄일 수 있다.  
+만약 4-step forecasts를 한다고 가정해보자.  
+
+
+![](https://otexts.com/fpp3/fpp_files/figure-html/cv4-1.svg)
+
+
+일단 구글 주식 예시를 그대로 가져온다.
+
+```{r}
+# Re-index based on trading days
+google_stock <- 
+    gafa_stock %>%
+    filter(Symbol == "GOOG", year(Date) >= 2015) %>%
+    mutate(day = row_number()) %>%
+    update_tsibble(index = day, regular = TRUE)
+
+# Filter the year of interest
+google_2015 <- 
+    google_stock %>% 
+    filter(year(Date) == 2015)
+
+google_2015
+
+```
+
+
+
+가져온 구글 주식 데이터로 시계열 교차 검증을 통해 정확도와 잔차 정확도를 비교해 본다.  
+`stretch_tsibble()`함수는 training set의 길이를 늘려준다. 
+아래 예시에는 training set 길이가 `.init=3`에서 시작하여 `step=1`씩 늘어나도록 한 것이다.  
+(첫 번째 training set은 3일치 주가가 들어가고, 두 번째 training set은 1일이 늘어난 4일치 주가가 들어가는 방식으로 늘려가게 한 것)  
+
+
+```{r}
+# Time series cross-validation accuracy
+google_2015_tr <- 
+    google_2015 %>% 
+    stretch_tsibble(.init = 3, .step = 1) %>% 
+    relocate(Date, Symbol, .id)
+
+google_2015_tr
+
+
+```
+
+
+`.id`열은 몇 번째 training set인지를 나타내는 새로운 key이다.  
+`accuracy()`함수는 training set의 예측 정확도를 평가하는데 사용할 수 있다.  
+
+```{r, warning=FALSE}
+# TSCV accuracy
+google_2015_tr %>% 
+    model(RW(Close ~ drift())) %>% 
+    forecast(h=1) %>% 
+    accuracy(google_2015) %>% 
+    select(c(".type","RMSE","MAE","MAPE","MASE"))
+
+```
+
+```{r}
+# Training set accuracy
+google_2015 %>% 
+    model(RW(Close ~ drift())) %>% 
+    accuracy() %>% 
+    select(c(".type","RMSE","MAE","MAPE","MASE"))
+
+```
+
+
+예상대로 전체 데이터로 예측한 것이 RMSE가 더 작게 나온다. (전체 데이터를 사용했으니 당연한 결과임.)  
+
+
+
+### Example: Forecast horizon accuracy with cross-validation
+
+아래는 구글의 주가 데이터를 이용해서 1~8 step ahead drift값을 주었을 때 예측 성능이 어떻게 변화하는지 확인한 것이다.  
+당연하게도 예측 범위가 커질수록(as the forecast horizon increases) 오차가 커지는 것을 확인할 수 있다.  
+
+```{r}
+fc <- google_2015_tr %>%
+    model(RW(Close ~ drift())) %>%
+    forecast(h = 8) %>%
+    group_by(.id) %>%
+    mutate(h = row_number()) %>%
+    ungroup()
+
+fc
+
+```
+
+```{r, warning=FALSE}
+fc %>%
+    accuracy(google_2015, by = c("h", ".model")) %>%
+    ggplot(aes(x = h, y = RMSE)) +
+    geom_point() +
+    labs(x = "N-step drift forecast", y = "RMSE",
+         title = "RMSE as a function of forecast horizon for the drift method applied to Google closing stock prices")
+
+```
+
+
+
+
+
+*
+

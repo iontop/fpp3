@@ -1,0 +1,304 @@
+---
+title: "Chap11_2"
+author: "J.H AHN"
+date: '2021 12 20 '
+output: html_document
+---
+
+```{r setup, include=FALSE}
+library(fpp3)
+
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## 11.2 Single level approaches
+
+전통적으로 계층화 혹은 그룹화된 시계열 예측은 어떤 한 수준의 집계를 선택하고 해당 수준에 대한 예측을 생성하는 작업이 선행된다.  
+그런 다음 더 높은 수준에 대해 집계하거나 더 낮은 수준에 대해 세분화되어 나머지 구조에 대한 일관된 예측을 수행한다.  
+<br>
+<br>
+<br>
+
+### The bottom-up approach
+
+일관된 예측을 생성하는 간단한 방법은 "상향식(bottom-up)" 접근 방식이다.  
+이 접근 방식에는 맨 아래 수준에서 각 시리즈에 대한 예측을 먼저 생성한 다음 이를 합산하여 구조의 모든 시리즈에 대한 예측을 생성한다.  
+
+예를 들어 Fig 11.1의 계층이라면 우리는 먼저 각각의 bottom-level series(가장 하위 레벨)의 $h$-step-ahead 예측을 수행한다.  
+
+
+$$\hat y_{AA,h},~~\hat y_{AB,h},~~\hat y_{AC,h},~~ \hat y_{BA,h}~~\text{and}~~\hat y_{BB,h}$$
+
+(이전에 사용된 $\hat y_{T+h|T} 표기법을 간단하게 표현함)
+
+
+이것들을 모두 합치면 나머지 series에 대한 $h$-step-ahead 일관된 예측을 얻을 수 있다.  
+
+ 
+$$\begin{align*}
+  \tilde{y}_{h} & =\hat y_{AA,h}+\hat y_{AB,h}+\hat y_{AC,h}+\hat y_{BA,h}+\hat y_{BB,h}, \\
+  \tilde y_{A,h} & = \hat y_{AA,h}+\hat y_{AB,h}+\hat y_{AC,h}, \\
+\text{and}\quad
+  \tilde y_{B,h} &= \hat y_{BA,h}+\hat y_{BB,h}
+\end{align*}$$
+
+
+(이 Chap.에서 "tide($\tilde $)" 표기는 일관된 예측을 지시한다.)
+
+
+bottom-up 접근방식의 장점은 가장 하위 레벨 예측에서 시작하기 때문에 통합(aggregate)으로 인한 정보의 손실이 없다는 것이다.   
+반면 하위 레벨 데이터에는 노이즈가 많고 예측이나 모델을 만들기 어려울 수 있다는 단점이 있다.  
+
+<br>
+<br>
+
+### Example: Generating bottom-up forecasts
+
+호주 여행객 데이터에서 국가 및 주별 예측을 한다고 가정해보자.  
+여행의 목적이나 지역에 관한 데이터는 관심을 가지지 않는다고 가정한다.  
+그러면 우선 각 분기별 국가 및 주별 전체 여행객 수만 들어간 간단한 `tsibble` object를 생성한다.   
+
+
+
+```{r}
+tourism_states <- 
+    tourism %>% 
+    aggregate_key(State, Trips = sum(Trips))
+
+tourism_states
+
+```
+
+
+이제 가장 하위 레벨인 주별 여행객 수 예측을 한 다음 그것들을 합쳐 국가 전체 여행객 수를 얻는다.  
+
+
+```{r}
+fcasts_state <- 
+    tourism_states %>% 
+    filter(!is_aggregated(State)) %>% 
+    model(ETS(Trips)) %>% 
+    forecast()
+
+# Sum bottom-level forecasts to get top-level forecast
+fcasts_national <- 
+    fcasts_state %>% 
+    summarise(value = sum(Trips), .mean = mean(value))
+
+
+fcasts_state
+
+fcasts_national
+
+```
+
+
+하지만 이번 Chap.에서 다뤘던 예측 기법보다 모든 예측 기법에 사용할 수 있는 좀 더 일반적인 접근법이 필요하다.  
+그래서 `reconcile()`함수를 사용하여 일관적인 예측 계산 방법을 정할 수 있다.  
+
+
+```{r}
+tourism_states %>% 
+    model(ets = ETS(Trips)) %>% 
+    reconcile(bu = bottom_up(ets)) %>% 
+    forecast()
+
+```
+
+
+`reconcile()`함수는 새로운 "model"을 하나 더 생성해서 bottom-up forecast 결과를 알려준다.  
+결과로 출력되는 `fable` object는 `ets`예측 뿐만 아니라 `bu` 예측도 가지게 된다.  
+State level에서 예측은 동일하지만 국가 전체 계산 결과는 `ets`와 `bu`예측이 약간 다르다.  
+
+
+<S3: agg_vec>	ets	2018 Q1	<S3: distribution>	29068.1014  
+<S3: agg_vec>	bu	2018 Q1	<S3: distribution>	28924.6022  
+
+
+bottom-up forecasting은 국가 총계에 대한 ETS 모델에 관심을 주지 않기 때문에 결과 `fable`에 많은 중복이 포함 되므로 이는 다소 비효율적 이다.  
+그러나 나중에 우리는 모든 수준의 집계에 대한 모델이 필요하고 일관된 예측이 원래 예측과 다른 고급 방법을 소개할 것이다.  
+
+
+
+<br>
+<br>
+
+### Workflow for forecasting aggregation structures
+
+위의 코드는 계층 및 그룹화된 예측에 대한 일반 워크플로를 보여준다.  
+다음과 같은 함수 파이프라인을 사용한다.  
+
+
+
+> data %>% aggregate_key() %>% model() %>%
+>  reconcile() %>% forecast()
+
+
+
+1. 개별 최하위 시리즈를 포함 하는 `tsibble` object(여기에 `data` 레이블이 지정됨)로 시작한다.
+
+2. `aggregate_key()`함수로 집계 구조를 정의하여 집계 시리즈도 포함하는 `tsibble` object를 빌드한다 .
+
+3. `model()`함수로 모든 집계 수준에서 각 계열에 대해 모델링한다 .
+
+4. `reconcile()`함수로 선택한 모델에서 일관된 예측을 생성하는 방법을 지정한다.
+
+5. `forecast()`함수를 사용하여 전체 집계 구조에 대한 예측을 생성한다.
+
+
+
+### Top-down approaches
+
+
+Top-down approaches는 Total series에 대한 예측을 우선 생성한 후 계층을 따라 내려가며 예측을 하는 방식이다.  
+
+구조의 맨 하위 수준의 예측값을 얻기 위해 Total 시리즈의 예측값이 어떻게 분포되어야 하는지를 결정하는 분해 비율 세트를 $p_1, \dots ,p_m$로 나타낸다.    
+예를 들어, 비율 $p_1, \dots ,p_5$를 사용하여 Fig 11.1의 계층 구조를 나타내면 아래와 같다.  
+
+
+$$\tilde y_{AA,t}=p_1\hat{y}_t,~~~\tilde y_{AB,t}=p_2\hat{y}_t,~~~\tilde y_{AC,t}=p_3\hat{y}_t,~~~\tilde y_{BA,t}=p_4\hat{y}_t~~~\text{and}~~~~~~\tilde y_{BB,t}=p_5\hat{y}_t$$
+
+
+bottom-level의 $h$-step-ahead 예측이 생성되면 나머지 series의 일관된 예측을 생성하기 위해 집계한다.  
+
+
+Top-down 예측은 `reconcile()`함수 내에서 `top_down()`argument를 사용하여 생성한다.  
+
+
+top-down방식에는 몇 가지 방법이 있는데 가장 일반적인 두 top-down 방식은 비율로 과거 비율에 따라 분해(disaggregate)하는 방법들이다.  
+
+
+<br>
+
+#### Average historical proportions
+
+
+
+$$p_j=\frac{1}{T}\sum_{t=1}^{T}\frac{y_{j,t}}{{y_t}}$$
+
+
+$for \space j=1, \dots ,m$ 각 비율$p_j$는 주기$t=1, \dots ,T$에 따른 bottom level series$y_{j,t}$의 과거 비율의 평균을 나타낸다.  
+
+
+이 방법을 사용하고 싶다면 `top_down()`함수에 `method = "average_proportions`로 입력하면 된다.  
+
+
+
+
+#### Proportions of the historical averages
+
+
+$$p_j={\sum_{t=1}^{T}\frac{y_{j,t}}{T}}\Big/{\sum_{t=1}^{T}\frac{y_t}{T}}$$
+
+
+$for \space j=1, \dots ,m$ 각 비율$p_j$는 Total 집계$y_t$값의 평균에 상대적인 bottom level series$y_{j,t}$의 과거  비율의 평균을 나타낸다. 
+
+
+이 방법을 사용하고 싶다면 `top_down()`함수에 `method = "proportion_average`로 입력하면 된다.  
+
+
+이러한 하향식 접근 방식의 편리한 속성은 단순성이다.  
+가장 집계된 최상위 시리즈에 대한 예측을 모델링하고 생성하기만 하면 된다.  
+일반적으로 이러한 접근 방식은 집계 수준에 대해 매우 신뢰할 수 있는 예측을 생성하는 것으로 보이며 적은 수의 데이터에 유용하다.   
+반면에 집계로 인한 정보 손실이 단점이다.  
+이러한 하향식 접근 방식을 사용하면 시간 역학, 특별 이벤트, 다양한 계절 패턴 등과 같은 개별 시리즈 특성을 포착하고 활용할 수 없다.  
+
+
+<br>
+
+
+#### Forecast proportions
+
+
+disaggregate을 할 때 사용되는 과거 비율은 시간이 지남에 따라 비율이 어떻게 변할지 고려하지 않기 때문에 과거 비율을 기반으로 하는 하향식 접근 방식(Top-down)은 상향식 접근 방식(Bottom-up)보다 계층 구조의 하위 수준에서 정확도가 떨어지는 예측을 생성하는 경향이 있다.  
+이 문제를 해결하기 위해 과거 데이터가 아닌 예측에 기반한 비율을 사용할 수 있다.  
+
+
+한 수준 계층 구조를 고려해보자.  
+먼저 모든 시리즈에 대한 $h$-step-ahead 예측을 생성한다.   
+이러한 예측을 직접 사용하지 않으며 일관성도 없다(올바르게 합산되지 않음).  
+이것을 "초기(initial)" 예측이라고 하고 bottom-level의 h-step-ahead 초기 예측을 한다음 이 level에서 h-step-ahead 초기 예측을 집계한다.  
+이 예측비율을 참조하여 모든 계층을 일관성있게 예측할 수 있도록 top-level의 $h$-step-ahead 초기 예측을 disaggregate한다.  
+
+
+$K$-level 계층구조에서 이 과정을 각 노드 별로 top-level에서 bottom-level까지 반복한다.  
+예측 비율을 얻기 위한 일반적인 규칙으로 이 과정을 적용한다.  
+
+
+
+$$p_j=\prod^{K-1}_{\ell=0}\frac{\hat{y}_{j,h}^{(\ell)}}{\hat{S}_{j,h}^{(\ell+1)}}$$
+
+
+여기에서 $j=1,2, \dots ,m$이고, $\hat {y}_{j,h}^{(\ell)}$은 $j$노드의 $\ell$레벨에 해당하는 $h$-step-ahead 초기 예측이다.  
+$\hat {S}_{j,t}^{\ell}$은 $j$노드의 $\ell$레벨에 해당하는 $h$-step-ahead 초기 예측의 합계이다.  
+이런 예측 비율로 일관성이 있는 bottom-level의 $h$-step-ahead예측을 얻기 위해 Total의 $h$-step-ahead예측을 나눈다(disaggregate).
+
+
+
+우리는 이 표기법을 설명하고 이 일반 규칙에 도달하는 방법을 보여주기 위해 Fig 11.1 의 계층 구조를 사용할 것 이다.  
+계층 구조의 각 시리즈에 대한 초기 예측을 생성했다고 가정하면 최상위 "Total" 시리즈의 경우, 모든 하향식 접근 방식에 대해 $\tilde y_h = \hat y_h$라는 것을 알 수 있다.  
+다음은 위의 표기법을 사용한 몇 가지 예이이다.  
+
+
+$$\hat{y}_{\text{A},h}^{(1)}=\hat{y}_{\text{B},h}^{(1)}=\hat{y}_{h}= \tilde{y}_{h}$$
+
+$$\hat{y}_{\text{AA},h}^{(1)}=\hat{y}_{\text{AB},h}^{(1)}=\hat{y}_{\text{AC},h}^{(1)}= \hat{y}_{\text{A},h}$$
+
+$$\hat{y}_{\text{AA},h}^{(2)}=\hat{y}_{\text{AB},h}^{(2)}= \hat{y}_{\text{AC},h}^{(2)}=\hat{y}_{\text{BA},h}^{(2)}= \hat{y}_{\text{BB},h}^{(2)}=\hat{y}_{h}= \tilde{y}_{h}$$
+
+$$\hat S_{AA,h}^{(1)} = \hat S_{AB,h}^{(1)}= \hat S_{AC,h}^{(1)}= \hat y_{AA,h}+\hat y_{AB,h}+\hat y_{AC,h}$$
+
+$$\hat S_{AA,h}^{(2)} = \hat S_{AB,h}^{(2)}= \hat S_{AC,h}^{(2)}= \hat S_{A,h}^{(1)} = \hat S_{B,h},{(1)}= \hat{S}_{h}= \hat y_{A,h}+\hat y_{B,h}$$
+
+
+계층 구조의 가장 왼쪽 분기 아래로 이동하면 일관된 예측값은 아래와 같다.
+
+
+$$\tilde y_{A,h} = \Bigg(\frac{\hat y_{A,h}}{\hat S_{A,h}^{(1)}}\Bigg) \tilde{y}_{h} =
+  \Bigg(\frac{\hat y_{AA,h}^{(1)}}{\hat S_{AA,h}^{(2)}}\Bigg) \tilde{y}_{h}$$
+ 
+ 
+그리고 
+  
+  
+$$\tilde y_{AA,h} = \Bigg(\frac{\hat y_{AA,h}}{\hat S_{AA,h}^{(1)}}\Bigg) \tilde y_{A,h}
+  =\Bigg(\frac{\hat y_{AA,h}}{\hat S_{AA,h}^{(1)}}\Bigg) \Bigg(\frac{\hat y_{AA}{h}^{(1)}}{\hat S_{AA,h}^{(2)}}\Bigg)\tilde{y}_{h}$$
+  
+
+결과적으로
+
+  
+$$p_1=\Bigg(\frac{\hat y_{AA,h}}{\hat S_{AA,h}^{(1)}}\Bigg) \Bigg(\frac{\hat y_{AA,h}^{(1)}}{\hat S_{AA,h}^{(2)}}\Bigg)$$
+
+
+다른 비율도 유사하게 얻을 수 있습니다.
+
+이 접근 방식은 `top_down()`함수에서 `method = "forecast_proportions"`로 설정하여 사용할 수 있다.  
+이 접근 방식은 다른 하향식 방법보다 더 잘 작동하는 경향이 있기 때문에 `top_down()`함수에서 'method` argument가 지정되지 않았을 경우 default로 사용된다.  
+
+모든 하향식 접근 방식의 한 가지 단점은 기본 예측이 편향되지 않더라도 편향되지 않은 일관된 예측을 생성하지 않는다는 것이다(Hyndman et al., 2011 ).
+
+
+
+<br>
+
+#### Middle-out approach
+
+
+middle-out 접근법은 상향식 접근법과 하향식 접근법을 결합한 것이다.  
+다시 말하지만 엄격하게 계층적인 집계 구조에만 사용할 수 있습니다.
+
+먼저 "중간" 수준이 선택되고 이 수준의 모든 시리즈에 대한 예측을 생성한다.  
+중간 수준 이상의 시리즈에 대해 "중간 수준" 예측을 위쪽으로 집계하여 상향식 접근 방식을 사용하여 일관된 예측이 생성된다.  
+"중간 수준" 아래에 있는 계열의 경우 "중간 수준" 예측을 아래쪽으로 disaggregate하여 하향식 접근 방식을 사용하여 일관된 예측을 생성한다.  
+
+이 접근 방식은 `middle_out()`함수를 사용하고 `level` argument로 적절한 중간 수준을 지정하고, `top-down()`과 동일한 `method`를 선택하여 사용한다.
+
+
+
+<br>
+<br>
+
+
+
+---

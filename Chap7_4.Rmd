@@ -1,0 +1,312 @@
+---
+title: "Chap7_4"
+author: "J.H AHN"
+date: '2021 12 16 '
+output: html_document
+---
+
+
+```{r setup, include=FALSE}
+library(fpp3)
+
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## 7.4 Some useful predictors
+
+시계열 데이터의 regression을 사용할 때 자주 발생하는 유용한 몇 가지 predictor들이다.  
+
+
+### Trend
+
+추세(trending)는 시계열 데이터의 공통 요소이다. 선형 추세는 간단하게 $x_{1,t}=t$ 예측변수를 사용하여 모델링 할 수 있다.  
+
+$$y_{t}= \beta_0+\beta_1t+\varepsilon_t,$$
+
+여기에서 $t=1,\dots,T$이고, `TSLM()`함수 안에서 사용할 수 있는 `trend()`함수로 확인할 수 있다.  
+이것은 모델의 비선형 추세를 다루는 Chap7_7에서 상세하게 다룬다.  
+
+
+
+
+### Dummy variables
+
+지금까지는 각 예측변수가 숫자값을 가진다고 가정했다. 
+하지만 예측변수가 두개의 값(예를 들어 "YES" and "NO")만 취하는 범주형 변수일 경우에는 "YES"에 해당하는 값 1과 "NO"에 해당하는 값 0을 취하는 **dummy variable**을 생성하여 처리할 수 있다.  
+
+
+더미변수를 사용하여 데이터의 이상치를 설명할 수도 있다.  
+더미변수는 이상치를 생략하는 대신 그 효과를 제거하는데 사용하는데 이 경우 이상치에 대해서는 1을 가지고 다른 모든 경우에 대해서는 0을 가진다.  
+특별한 이번트가 발생하는 경우를 처리할 때 이러한 기법을 응용할 수 있다.  
+예를 들어 브라질로 오는 연간 관광객을 예측할 때 2016년 올림픽의 영향을 고려할 수 있고, 에콰도르의 소매점 판매량을 예측할 때 2014년 지진의 영향을 고려하는데 사용할 수도 있다.  
+
+
+범주가 3개 이상인 경우 변수는 전체 범주 수보다 하나 작은 더미변수를 생성하여 사용하면 된다.  
+예를 들어 요일의 경우 일 ~ 토요일까지 총 7일이지만 더미변수는 6개만 생성하면 된다. 왜냐하면 모두 0이 들어갔다면 일요일로 보면 되기 때문이다.  
+
+factor variable을 `TSLM()`함수로 처리하면 이를 자동으로 더미변수로 만들어 처리한다.  
+
+
+
+
+### Seasonal dummy variables
+
+요일 데이터를 처리하는 경우 아래와 같이 더미변수를 생성할 수 있다.
+
+
+day of the week|$d{1,t}$|$d{2,t}$|$d{3,t}$|$d{4,t}$|$d{5,t}$|$d{6,t}$|
+:-------------:|:------:|:------:|:------:|:------:|:------:|:------:|
+Monday|1|0|0|0|0|0|
+Tuesday|0|1|0|0|0|0|
+Wednesday|0|0|1|0|0|0|
+Thursday|0|0|0|1|0|0|
+Friday|0|0|0|0|1|0|
+Saturday|0|0|0|0|1|0|
+Sunday|0|0|0|0|0|0|
+Monday|1|0|0|0|0|0|
+
+
+
+7개의 범주는 6개의 더미변수만으로 만들 수 있다.  
+일곱번째 범주(이 경우에는 일요일)는 더미변수가 모두 0이 될 때로 지정되기 때문이다.  
+
+
+많은 초보자들이 7개의 범주를 만들기 위해 7개의 더미변수를 만드는 경우가 있는데 이 때문에 regression이 안 되는 경우가 발생한다.  
+이런 현상을 "더미 변수 트랩(dummy variable trap)"이라 한다.  
+
+
+절편도 포함되어야 한다면 추정할 parameter가 너무 많아진다.  
+일반적인 규칙은 범주보다 하나 작은 수의 더미 변수를 사용하는 것이다.  
+따라서 분기별 데이터의 경우에는 3개의 더미 변수를 사용하고, 월별 데이터의 경우에는 11개의 더미변수를, 요일별 데이터의 경우는 6개의 더미변수를 사용한다.  
+
+
+더미변수와 관련된 각 계수의 해석은 생략된 범주에 대한 해당 범주의 효과를 측정결과이다.  
+위의 예에서 월요일과 관계된 $d_{1,t}$계수는 일요일의 영향과 비교하여 예측변수에 대한 월요일의 영향을 측정한다.  
+
+아래는 호주 맥주 생산의 분기별 계절성을 가진 더미변수 해석의 예이다.  
+
+
+`TSLM()`함수에서 `season()`함수를 사용하면 자동으로 이러한 계절성을 처리한다.  
+
+
+### Example Australian quarterly beer production
+
+호주의 분기별 맥주 생산을 다시 가져와서 예제로 사용한다.  
+
+```{r}
+recent_production <- 
+    aus_production %>% 
+    filter(year(Quarter) >= 1992)
+
+recent_production %>% 
+    autoplot(Beer) +
+    labs(title = "Fig 7.14-Australian quarterly beer production",
+         y = "Megaliters")
+
+
+
+
+```
+
+
+맥주 생산량을 예측하길 원하므로 선형 추세를 가진 regression model과 분기별 더미 변수를 이용하여 모델링을 한다.  
+
+
+```{r}
+fit_beer <- recent_production %>% 
+model(TSLM(Beer ~ trend() + season()))
+
+report(fit_beer)
+
+
+```
+
+
+`trend()`함수와 `season()`함수는 `TSLM()`함수 안에서만 작동되는 함수이다.
+
+
+값을 보면 분기별로 약 0.34megaliter씩 생산량이 감소하고 있음을 알 수 있다.  
+평균적으로 두번째 분기에는 첫번째 분기 대비 -34.66megaliter가 감소하고 세번째 분기에는 첫번째 분기 대비 17.82megaliter가 감소, 네번째 분기에는 반대로 72.80megaliter가 증가하는 것으로 나타났다.  
+
+
+```{r}
+augment(fit_beer) %>% 
+    ggplot(aes(x = Quarter)) +
+    geom_line(aes(y = Beer, color = "Data")) +
+    geom_line(aes(y = .fitted, color = "Fitted")) +
+    labs(title = "Fig 7.15-Australian quarterly beer production",
+         y = "Megaliters")
+
+
+
+```
+
+
+
+```{r}
+augment(fit_beer) %>% 
+    ggplot(aes(x = Beer, y = .fitted,
+               color = factor(quarter(Quarter)))) +
+    geom_point() +
+    geom_abline() +
+    labs(title = "Figure 7.16-Actual beer production plotted against predicted beer production",
+         x = "Actual values", y = "Fitted",
+         color = "Quarter") +
+    theme(legend.position = "bottom")
+
+
+```
+
+
+
+
+
+### Intervention variables
+
+예측할 변수에 영향을 미칠 수 있는 일들을 모델링 하는 것이 종종 필요하다.  
+예를 들어 경쟁사의 활동. 광고비, 쟁의행위 등이 모두 영향을 미칠 수 있는 요인이다.  
+
+효과가 일정 기간동안만 지속된다면 "spike"변수를 사용한다.  
+이것은 개입 기간에는 1의 값을 취하고 다른 곳에서는 0을 취하는 더미변수이다.  
+spike variable은 이상치를 처리하기 위한 더미 변수와 같다.  
+
+혹은 즉각적이고 영구적인 영향을 미치는 경우, 개입으로 이해 수준이 달라지는 경우라면 "step"변수를 사용한다.  
+step variable은 개입 이전에는 0, 개입 이후부터는 1의 값을 취한다.  
+
+영구적인 효과의 또다른 형태는 기울기를 바꾸는 것이다.  
+여기서 개입하는 이벤트들은 선형 추세의 조각들을 이용하여 처리한다.  
+개입 시점에 추세가 구부러진다면 비선형적이 되었다는 의미가 된다.  
+이에 대해서는 Chap7_7에서 상세하게 다룬다.  
+
+
+
+
+
+### Trading days
+
+한 달의 거래일수는 다를 수 있고, 이로 인해 판매 데이터의 분석결과가 달라질 수 있다.  
+이를 위해 매월 거래일수를 예측변수로 포함할 수 있다.  
+
+특정한 요일에 다른 효과를 주기 위한 대안에는 아래와 같은 예측변수가 있다.  
+
+
+$$\begin{align*}
+  x_{1} &= \text{number of Mondays in month;} \\
+  x_{2} &= \text{number of Tuesdays in month;} \\
+        & \vdots \\
+  x_{7} &= \text{number of Sundays in month.}
+\end{align*}$$
+
+
+
+
+
+
+
+### Distributed lags
+
+종종 광고에 쓰인 지출을 예측 변수로 포함하는 데이터 분석에 유용하다.  
+광고는 특성상 실제 지출 시점 이후에 효과가 나타나고 일정 시간 효과가 지속되기 때문에 시차를 고려해야 한다.  
+
+따라서 아래와 같은 예측 변수를 사용할 수 있다.  
+
+$$\begin{align*}
+  x_{1} &= \text{advertising for previous month;} \\
+  x_{2} &= \text{advertising for two months previously;} \\
+        & \vdots \\
+  x_{m} &= \text{advertising for $m$ months previously.}
+\end{align*}$$
+
+
+지연이 증가함에 따라 계수가 감소되도록 하는 것이 일반적인데 이 책에서 다루는 범위를 벗어나는 내용이라 상세하게 기술하지 않는다.  
+
+
+
+
+
+### Easter
+
+부활절은 매년 같은 날짜에 열리지 않고 그 효과가 며칠 동안 지속된다는 점에서 대부분의 다른 공휴일들과 다르다.  
+이 경우 휴일이 특정 기간에 해당되면 값이 1일고 그렇지 않을 경우 0인 더미변수를 사용할 수 있다.  
+
+월별데이터의 경우 부활적이 3월이면 더미변수는 3월에 1을 취하고 4월에 있으면 더미변수는 4월에 1을 취한다.  
+부활절이 3월에 시작하여 4월에 끝나면 더미변수는 월간에 비례하여 분할한다.  
+
+
+
+
+
+
+### Fourier series
+
+아주 긴 계절동안 계절성 더미 변수를 사용하는 것의 대안으로 푸리에 항(Fourier terms)을 사용하는 방법이 있다.  푸리에 변환은 모든 주기함수를 sine과 cosine항으로 근사할 수 있다는 것이다.  
+
+
+만약 계절성 주기(seasonal period)가 $m$이라면 첫번째 Fourier terms은 아래와 같이 나타난다.  
+
+
+$$x_{1,t} = \sin\left(\textstyle\frac{2\pi t}{m}\right),
+  x_{2,t} = \cos\left(\textstyle\frac{2\pi t}{m}\right),
+  x_{3,t} = \sin\left(\textstyle\frac{4\pi t}{m}\right),$$
+$$x_{4,t} = \cos\left(\textstyle\frac{4\pi t}{m}\right),
+  x_{5,t} = \sin\left(\textstyle\frac{6\pi t}{m}\right),
+  x_{6,t} = \cos\left(\textstyle\frac{6\pi t}{m}\right),$$
+  
+  
+만약 월별 주기성을 가진다면 처음 11개의 예측변수를 사용하면 11개의 더미변수를 사용할 때와 똑같은 예측값을 얻을 수 있다.  
+
+
+특히 계절성 주기$m$이 크다면 Fourier terms을 사용해서 더미변수보다 더 적은 수의 예측변수를 사용하여 결과를 얻을 수 있다.  예를 들어 $m\approx 52$인 주간 데이터에 유용하게 사용할 수 있다.  
+분기별 데이터와 같은 짧은 계절성 주기를 가진 데이터라면 Fourier terms을 사용하는 것이 계절성 더미변수를 사용하는 것에 비해 큰 장점을 가지지는 않는다.  
+
+이러한 Fourier terms은 `fourier()`함수를 사용하여 만들 수 있다.  
+예를 들어 호주 맥주 생산 데이터로 모델링을 해보자.  
+
+
+```{r}
+fourier_beer <- 
+    recent_production %>% 
+    model(TSLM(Beer ~ trend() + fourier(K = 2)))
+
+report(fourier_beer)
+
+
+```
+
+
+`fourier()`함수 안에 쓰인 `K` argument는 몇 개의 Sin, cos term이 포함되어 있는지를 입력하는 것이다.  최대 $K$값은 $K=m/2$으로 정의된다. (여기서 $m$은 seasonal period를 의미한다.)  
+최대값을 사용할 경우에는 계절성 더미변수를 사용한 결과와 동일한다.  
+
+만약에 단 두개의 Fourier terms ($x_{1,t}$, $x_{2,t}$)을 사용했다면 계절 패턴은 간단한 사인파(sine wave)의 형태를 가질 것이다.  
+Fourier terms을 가지는 회귀 모델을 **harmonic regression**이라 부르는데 이는 연속적인 Fourier terms은 첫 두 Fourier terms의 harmonic을 보이기 때문이다.  
+
+**Harmonic(고조파)**는 원천 추파수(Fundamental frequency)의 배수 주파수 성분을 의미함.
+
+
+
+
+
+
+---
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

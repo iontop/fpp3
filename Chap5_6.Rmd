@@ -1,0 +1,112 @@
+---
+title: "Chap5_6"
+author: "J.H AHN"
+date: '2021 12 8 '
+output:
+  word_document: default
+  html_document: default
+---
+
+```{r setup, include=FALSE}
+library(fpp3)
+
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## 5.6 Forecasting using transformations
+
+모델링 시 사용할 수 있는 일반적인 변환으로 Box-Cox 변환이 있다. 
+
+> 박스-칵스 변환의 주된 용도는 데이터를 정규분포에 가깝게 만들거나 
+> 데이터의 분산을 안정화하는 것으로, 정규성을 가정하는 분석법이나 
+> 정상성을 요구하는 분석법을 사용하기에 앞서 데이터의 전처리에 
+> 유용하게 쓸 수 있다.
+> 멱변환을 취하기 위해서는 데이터가 모두 양수여야한다는 조건이 필요하지만, 
+> 보통은 그냥 데이터의 최소값이 양수가 되도록 어떤 값을 더해서 밀어Shift주는
+> 식으로 해결한다. 
+> 이 방법이 적절치 못하거나 마음에 들지 않는다면 실수 전체에 대해 일반화된 
+> 여-존슨 변환 Yeo-Johnson Transformation 을 고려해볼 수 있다.
+
+변환이 있는 모델에서 예측할 때 먼저 변환된 데이터의 예측을 생성한 후 역변환을 하면 원래 스케일의 예측값을 얻을 수 있다.  
+Box-Cox 변환의 경우 역변환은 아래와 같다.  
+
+$$\begin{equation}
+\tag{5.2}
+  y_{t} =
+    \begin{cases}
+      \exp(w_{t}) & \text{if $\lambda=0$};\\
+      \text{sign}(\lambda w_t+1)|\lambda w_t+1|^{1/\lambda} & \text{otherwise}.
+    \end{cases}
+\end{equation}$$
+
+
+`fable` package에서는 자동으로 역변환을 해주고 역변환의 분포는 변환된 정규(transformed Normal)분포를 따른다.  
+
+
+
+### Prediction intervals with transformations
+
+변환을 했을 경우 prediction intervals은 변환된 척도에서 먼저 계산된 다음 끝점은 역변환되어 원래 척도에서의 prediction intervals로 나온다.  
+이러한 방법으로 인해 prediction intervals의 확률범위를 유지하지만 prediction intervals이 대칭으로 나타나지 않게 된다.  
+
+`fable` package를 사용하여 모델에서 변환을 사용할 경우에는 prediction intervals의 역변환이 자동으로 이루어진다.  
+변환을 사용하면 포인트 예측에는 큰 차이를 보이지 않지만 prediction intervals에는 큰 영향을 미친다.  
+
+
+### Bias adjustments
+
+Box-Cox 변환을 사용할 때 발생하는 문제 중 하나는 역변환된 포인트 예측이 prediction intervals의 평균이 아니라는 것이다.  
+변환된 공간의 분포가 대칭이라고 가정하기 때문에 일반적으로 prediction intervals의 중간값이 된다.  
+일반적으로 평균값을 쓰는 것이 적절하지 않지만 많은 경우 평균값이 필요할 때가 있다.  
+예를 들어 다양한 지역의 판매 예측치를 더해서 전체의 판매 예측량을 구해야 한다면 평균값을 구해서 합해야 한다.  
+(중간값은 특성상 합할(add-up) 수 없다.)
+
+Box-Cox 변환의 경우 역변환 평균은 (대략적으로) 아래와 같이 계산할 수 있다.  
+
+$$\begin{equation}
+\tag{5.3}
+\hat{y}_{T+h|T} =
+  \begin{cases}
+     \exp(\hat{w}_{T+h|T})\left[1 + \frac{\sigma_h^2}{2}\right] & \text{if $\lambda=0$;}\\
+     (\lambda \hat{w}_{T+h|T}+1)^{1/\lambda}\left[1 + \frac{\sigma_h^2(1-\lambda)}{2(\lambda \hat{w}_{T+h|T}+1)^{2}}\right] & \text{otherwise;}
+  \end{cases}
+\end{equation}$$
+
+$\hat{w}_{T+h|T}$는 $h$-step 예측 평균이며, $\sigma_h^2$는 변환된 척도에서의 $h$-step 예측 분산이다.  
+더 커진 예측 분산은 평균과 중간값 사이의 격차를 더 크게 만든다.  
+
+식(5.2)로 구해진 역변환과 식(5.3)으로 구한 평균값의 차이를 **bias(편향)**라 한다.  
+중간값이 아닌 평균값을 사용해야 할 때는 포인트 예측은 **bias-adjust(편향 조정)**되었다고 한다.  
+
+
+이 bias-adjust가 얼마나 많은 차이를 만들어내는지 보기 위해 로그 변환과 랜덤워크(w/ drift)를 사용하여 계란의 연간 평균 가격을 예측한 결과는 아래와 같다.  
+로그 변환은 예측과 prediction intervals이 양수(positive)가 되도록 하는데 유용하다.  
+
+
+```{r, warning=FALSE}
+prices %>% 
+    filter(!is.na(eggs)) %>% 
+    model(RW(log(eggs) ~ drift())) %>% 
+    forecast(h = 50) %>% 
+    autoplot(prices %>% filter(!is.na(eggs)), level = 80, point_forecast = lst(mean, median)) +
+    labs(title = "Annual egg prices",
+         y = "$US (in cents adujested for inflation)")
+
+
+```
+
+
+점선은 중간값을 나타내고 실선은 평균값을 나타내고 있다.  
+어떤 식으로 한쪽으로 치우친(skewed) 예측 분포가 평균값을 끌어올리는지 알 수 있다.  
+이렇게 올라간 것은 bias-adjustment를 해주었기 때문이다.  
+
+Bias-adjusted forecast 평균값은 `fable` package에서 자동적으로 계산된다.  
+예측 중간값(bias-adjustment가 적용되기 전 예측값)은 `median()`함수를 사용하여 생성된 distribution열에서 확인이 가능하다.  
+
+
+
+
+
+
+
+
